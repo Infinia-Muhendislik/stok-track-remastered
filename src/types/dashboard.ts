@@ -1,4 +1,15 @@
-export type OrderStatus = "Completed" | "Pending" | "Canceled";
+export type OrderStatus =
+  | "Pending"
+  | "Approved"
+  | "Shipped"
+  | "Delivered"
+  | "Canceled";
+
+export type OrderItem = {
+  productName: string;
+  quantity: number;
+  price: number;
+};
 
 export type Order = {
   id: string;
@@ -6,6 +17,8 @@ export type Order = {
   amount: number;
   status: OrderStatus;
   date: string;
+  invoiceUrl?: string | null;
+  items?: OrderItem[];
 };
 
 export type ProductStatus = "In Stock" | "Low Stock" | "Out of Stock";

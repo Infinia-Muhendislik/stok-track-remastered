@@ -45,3 +45,28 @@ export async function sendPasswordResetEmail(to: string, resetLink: string) {
     `,
   });
 }
+
+// Genel mail gönderme fonksiyonu
+export async function sendMail({
+  to,
+  subject,
+  html,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+}) {
+  const from =
+    process.env.EMAIL_FROM ?? process.env.SMTP_USER ?? process.env.EMAIL_USER;
+  if (!from) {
+    throw new Error("EMAIL_FROM is not configured.");
+  }
+
+  const mailer = getMailer();
+  await mailer.sendMail({
+    to,
+    from,
+    subject,
+    html,
+  });
+}

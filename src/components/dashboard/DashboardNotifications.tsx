@@ -94,7 +94,7 @@ export function DashboardNotifications({
     if (today.getDay() === 1) {
       // Monday
       const totalRevenue = orders
-        .filter((o) => o.status === "Completed")
+        .filter((o) => o.status === "Delivered")
         .reduce((sum, o) => sum + o.amount, 0);
 
       notifications.push({

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Swal from "sweetalert2";
 
 import { Header } from "@/components/dashboard/Header";
@@ -13,6 +14,7 @@ import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { ReportsPage } from "@/components/dashboard/ReportsPage";
 import { SalesChart } from "@/components/dashboard/SalesChart";
 import { SettingsPage } from "@/components/dashboard/SettingsPage";
+import { TeamManagement } from "@/components/dashboard/TeamManagement";
 import { Sidebar, type SidebarTab } from "@/components/dashboard/Sidebar";
 import { DashboardNotifications } from "@/components/dashboard/DashboardNotifications";
 import {
@@ -27,23 +29,36 @@ import type { NotificationSettings } from "@/types/settings";
 
 type TabId = SidebarTab;
 
-const TAB_ITEMS: { id: TabId; label: string }[] = [
+const ADMIN_TABS: { id: TabId; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "products", label: "Products" },
   { id: "orders", label: "Orders" },
   { id: "reports", label: "Reports" },
+  { id: "team", label: "Ekip Yönetimi" },
   { id: "settings", label: "Settings" },
+];
+
+const DISTRIBUTOR_TABS: { id: TabId; label: string }[] = [
+  { id: "products", label: "Katalog" },
+  { id: "orders", label: "Siparişlerim" },
+  { id: "settings", label: "Ayarlar" },
 ];
 
 export function DashboardClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "ADMIN";
+
+  const tabItems = useMemo(
+    () => (isAdmin ? ADMIN_TABS : DISTRIBUTOR_TABS),
+    [isAdmin]
+  );
+  const defaultTab = isAdmin ? "dashboard" : "products";
   const tabParam = searchParams.get("tab") as TabId | null;
 
   const [activeTab, setActiveTab] = useState<TabId>(
-    tabParam && TAB_ITEMS.some((t) => t.id === tabParam)
-      ? tabParam
-      : "dashboard"
+    tabParam && tabItems.some((t) => t.id === tabParam) ? tabParam : defaultTab
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -290,26 +305,26 @@ export function DashboardClient() {
   // Stats hesapla
   const stats = useMemo(() => {
     const totalRevenue = orders
-      .filter((o) => o.status === "Completed")
+      .filter((o) => o.status === "Delivered")
       .reduce((sum, o) => sum + o.amount, 0);
 
     const pendingOrders = orders.filter((o) => o.status === "Pending").length;
     const lowStockItems = products.filter(
       (p) => p.status === "Low Stock" || p.status === "Out of Stock"
     ).length;
-    const completedOrders = orders.filter(
-      (o) => o.status === "Completed"
+    const deliveredOrders = orders.filter(
+      (o) => o.status === "Delivered"
     ).length;
     const fulfillmentRate =
       orders.length > 0
-        ? ((completedOrders / orders.length) * 100).toFixed(1)
+        ? ((deliveredOrders / orders.length) * 100).toFixed(1)
         : "0";
 
     return [
       {
         title: "Total Revenue",
         value: `$${totalRevenue.toLocaleString()}`,
-        change: "From completed orders",
+        change: "From delivered orders",
         trendColor: "text-emerald-600",
       },
       {
@@ -327,7 +342,7 @@ export function DashboardClient() {
       {
         title: "Fulfillment Rate",
         value: `${fulfillmentRate}%`,
-        change: `${completedOrders} completed`,
+        change: `${deliveredOrders} delivered`,
         trendColor: "text-emerald-600",
       },
     ];
@@ -366,6 +381,22 @@ export function DashboardClient() {
   );
 
   const renderActiveContent = () => {
+    // Distribütör sadece products, orders, settings sekmelerine erişebilir
+    if (!isAdmin && (activeTab === "dashboard" || activeTab === "reports")) {
+      return (
+        <ProductsPage
+          products={products}
+          searchTerm={searchTerm}
+          onDelete={handleDeleteProduct}
+          onUpdate={handleUpdateProduct}
+          onDeleteAll={handleDeleteAllProducts}
+          onBulkImport={() => setIsBulkImportOpen(true)}
+          isDistributor={true}
+          onOrderCreate={fetchData}
+        />
+      );
+    }
+
     if (isLoading) {
       switch (activeTab) {
         case "products":
@@ -393,12 +424,23 @@ export function DashboardClient() {
             onUpdate={handleUpdateProduct}
             onDeleteAll={handleDeleteAllProducts}
             onBulkImport={() => setIsBulkImportOpen(true)}
+            isDistributor={!isAdmin}
+            onOrderCreate={fetchData}
           />
         );
       case "orders":
-        return <OrdersPage orders={orders} searchTerm={searchTerm} />;
+        return (
+          <OrdersPage
+            orders={orders}
+            searchTerm={searchTerm}
+            isDistributor={!isAdmin}
+            onStatusUpdate={fetchData}
+          />
+        );
       case "reports":
         return <ReportsPage orders={orders} products={products} />;
+      case "team":
+        return <TeamManagement />;
       case "settings":
         return <SettingsPage onNotificationChange={handleNotificationChange} />;
       default:
@@ -412,7 +454,7 @@ export function DashboardClient() {
       <div className="flex flex-1 flex-col">
         <nav className="sticky top-0 z-10 border-b border-border-light bg-card-light px-4 py-3 md:hidden">
           <div className="flex gap-2 overflow-x-auto">
-            {TAB_ITEMS.map((tab) => {
+            {tabItems.map((tab) => {
               const isActive = tab.id === activeTab;
               return (
                 <button
@@ -436,7 +478,7 @@ export function DashboardClient() {
           <Header
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
-            onAddProduct={handleAddProduct}
+            onAddProduct={isAdmin ? handleAddProduct : undefined}
           />
           {renderActiveContent()}
         </main>

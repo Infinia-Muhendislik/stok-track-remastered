@@ -1,21 +1,20 @@
 import { redirect } from "next/navigation";
 import { getServerAuthSession } from "@/lib/auth";
-import { DashboardHomeClient } from "@/components/dashboard/DashboardHomeClient";
+import { TeamManagementClient } from "@/components/dashboard/TeamManagementClient";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
-export default async function DashboardPage() {
+export default async function TeamRoute() {
   const session = await getServerAuthSession();
 
   if (!session?.user) {
     redirect("/login");
   }
 
-  // Distribütörler için ana sayfa products'a yönlendir
+  // Sadece admin erişebilir
   if (session.user.role !== "ADMIN") {
     redirect("/dashboard/products");
   }
 
-  return <DashboardHomeClient />;
+  return <TeamManagementClient />;
 }

@@ -1,9 +1,15 @@
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
+import Swal from "sweetalert2";
 
 import type { Product } from "@/types/dashboard";
 import { ProductDetailModal } from "./ProductDetailModal";
+
+interface CartItem {
+  product: Product;
+  quantity: number;
+}
 
 interface ProductsPageProps {
   products: Product[];
@@ -12,6 +18,8 @@ interface ProductsPageProps {
   onUpdate?: (productId: string, updates: Partial<Product>) => void;
   onDeleteAll?: () => void;
   onBulkImport?: () => void;
+  isDistributor?: boolean;
+  onOrderCreate?: () => void;
 }
 
 const STATUS_STYLES: Record<Product["status"], string> = {
@@ -33,8 +41,15 @@ export function ProductsPage({
   onUpdate,
   onDeleteAll,
   onBulkImport,
+  isDistributor = false,
+  onOrderCreate,
 }: ProductsPageProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Sepet state'leri (sadece distribütörler için)
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [isOrdering, setIsOrdering] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -119,6 +134,91 @@ export function ProductsPage({
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditForm({});
+  };
+
+  // Sepet fonksiyonları
+  const addToCart = (product: Product) => {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id);
+      if (existing) {
+        return prev.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+  };
+
+  const updateCartQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    } else {
+      setCart((prev) =>
+        prev.map((item) =>
+          item.product.id === productId ? { ...item, quantity } : item
+        )
+      );
+    }
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  };
+
+  const cartTotal = cart.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
+    0
+  );
+
+  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handleCreateOrder = async () => {
+    if (cart.length === 0) return;
+
+    setIsOrdering(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: cart.map((item) => ({
+            productId: item.product.id,
+            quantity: item.quantity,
+            price: item.product.price,
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        Swal.fire({
+          icon: "success",
+          title: "Sipariş Oluşturuldu!",
+          text: "Siparişiniz başarıyla oluşturuldu. Siparişlerim sayfasından takip edebilirsiniz.",
+          timer: 2500,
+          showConfirmButton: false,
+        });
+        setCart([]);
+        setShowCart(false);
+        onOrderCreate?.();
+      } else {
+        const data = await res.json();
+        Swal.fire({
+          icon: "error",
+          title: "Hata",
+          text: data.error || "Sipariş oluşturulamadı",
+        });
+      }
+    } catch {
+      Swal.fire({
+        icon: "error",
+        title: "Sunucu Hatası",
+        text: "Bağlantı kurulamadı",
+      });
+    } finally {
+      setIsOrdering(false);
+    }
   };
 
   const clearFilters = () => {
@@ -299,55 +399,75 @@ export function ProductsPage({
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center flex-wrap gap-4">
         <h2 className="text-xl font-bold text-text-light-primary">
-          Product Inventory
+          {isDistributor ? "Ürün Kataloğu" : "Product Inventory"}
         </h2>
         <div className="flex gap-2">
-          {/* Export Dropdown */}
-          <div className="relative">
+          {/* Distribütör için Sepet Butonu */}
+          {isDistributor && (
             <button
-              onClick={() => setShowExportMenu(!showExportMenu)}
-              className="px-4 py-2 text-sm font-medium text-text-light-secondary border border-border-light rounded-lg hover:bg-background-light transition-colors flex items-center gap-2"
+              onClick={() => setShowCart(true)}
+              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2 relative"
             >
               <span className="material-symbols-outlined text-[18px]">
-                download
+                shopping_cart
               </span>
-              Export
+              Sepet
+              {cartItemCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full size-5 flex items-center justify-center">
+                  {cartItemCount}
+                </span>
+              )}
             </button>
-            {showExportMenu && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-border-light rounded-lg shadow-lg py-1 min-w-40">
-                <button
-                  onClick={exportToCSV}
-                  className="w-full px-4 py-2 text-left text-sm text-text-light-primary hover:bg-background-light flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    description
-                  </span>
-                  Export as CSV
-                </button>
-                <button
-                  onClick={exportToExcel}
-                  className="w-full px-4 py-2 text-left text-sm text-text-light-primary hover:bg-background-light flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    table_chart
-                  </span>
-                  Export as Excel
-                </button>
-                <button
-                  onClick={exportToPDF}
-                  className="w-full px-4 py-2 text-left text-sm text-text-light-primary hover:bg-background-light flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    picture_as_pdf
-                  </span>
-                  Export as PDF
-                </button>
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Import Button */}
-          {onBulkImport && (
+          {/* Admin için Export Dropdown */}
+          {!isDistributor && (
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="px-4 py-2 text-sm font-medium text-text-light-secondary border border-border-light rounded-lg hover:bg-background-light transition-colors flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  download
+                </span>
+                Export
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-border-light rounded-lg shadow-lg py-1 min-w-40">
+                  <button
+                    onClick={exportToCSV}
+                    className="w-full px-4 py-2 text-left text-sm text-text-light-primary hover:bg-background-light flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      description
+                    </span>
+                    Export as CSV
+                  </button>
+                  <button
+                    onClick={exportToExcel}
+                    className="w-full px-4 py-2 text-left text-sm text-text-light-primary hover:bg-background-light flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      table_chart
+                    </span>
+                    Export as Excel
+                  </button>
+                  <button
+                    onClick={exportToPDF}
+                    className="w-full px-4 py-2 text-left text-sm text-text-light-primary hover:bg-background-light flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      picture_as_pdf
+                    </span>
+                    Export as PDF
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Admin için Import Button */}
+          {!isDistributor && onBulkImport && (
             <button
               onClick={onBulkImport}
               className="px-4 py-2 text-sm font-medium text-text-light-secondary border border-border-light rounded-lg hover:bg-background-light transition-colors flex items-center gap-2"
@@ -379,8 +499,8 @@ export function ProductsPage({
             )}
           </button>
 
-          {/* Delete All Button */}
-          {products.length > 0 && (
+          {/* Admin için Delete All Button */}
+          {!isDistributor && products.length > 0 && (
             <button
               onClick={() => setShowDeleteAllConfirm(true)}
               className="px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2"
@@ -393,6 +513,132 @@ export function ProductsPage({
           )}
         </div>
       </div>
+
+      {/* Sepet Modal - Distribütör */}
+      {isDistributor && showCart && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-text-light-primary flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">
+                  shopping_cart
+                </span>
+                Sepetim ({cartItemCount} ürün)
+              </h3>
+              <button
+                onClick={() => setShowCart(false)}
+                className="text-text-light-secondary hover:text-text-light-primary p-1"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {cart.length === 0 ? (
+              <div className="py-12 text-center text-text-light-secondary">
+                <span className="material-symbols-outlined text-4xl text-gray-300">
+                  shopping_cart
+                </span>
+                <p className="mt-2">Sepetiniz boş</p>
+                <p className="text-sm">
+                  Ürünleri sepete ekleyerek sipariş oluşturabilirsiniz
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+                  {cart.map((item) => (
+                    <div
+                      key={item.product.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-border-light"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-text-light-primary">
+                          {item.product.name}
+                        </p>
+                        <p className="text-sm text-text-light-secondary">
+                          ${item.product.price.toFixed(2)} / adet
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            updateCartQuantity(
+                              item.product.id,
+                              item.quantity - 1
+                            )
+                          }
+                          className="size-8 rounded-lg border border-border-light hover:bg-gray-100 flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            remove
+                          </span>
+                        </button>
+                        <span className="w-8 text-center font-medium">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() =>
+                            updateCartQuantity(
+                              item.product.id,
+                              item.quantity + 1
+                            )
+                          }
+                          className="size-8 rounded-lg border border-border-light hover:bg-gray-100 flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            add
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => removeFromCart(item.product.id)}
+                          className="size-8 rounded-lg text-red-500 hover:bg-red-50 flex items-center justify-center ml-2"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            delete
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-border-light pt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-text-light-secondary">Toplam:</span>
+                    <span className="text-xl font-bold text-text-light-primary">
+                      ${cartTotal.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setCart([])}
+                      className="flex-1 px-4 py-2 border border-border-light rounded-lg text-text-light-secondary hover:bg-gray-50"
+                    >
+                      Sepeti Temizle
+                    </button>
+                    <button
+                      onClick={handleCreateOrder}
+                      disabled={isOrdering}
+                      className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isOrdering ? (
+                        "Oluşturuluyor..."
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">
+                            check
+                          </span>
+                          Sipariş Oluştur
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Delete All Confirmation Modal */}
       {showDeleteAllConfirm && (
@@ -670,7 +916,29 @@ export function ProductsPage({
                     </span>
                   </td>
                   <td className="p-4 text-right">
-                    {editingId === product.id ? (
+                    {isDistributor ? (
+                      /* Distribütör için Sepete Ekle butonu */
+                      <div className="flex gap-1 justify-end">
+                        <button
+                          onClick={() => setSelectedProduct(product)}
+                          className="text-text-light-secondary hover:text-primary transition-colors p-1.5 rounded hover:bg-primary/10"
+                          title="Detay Görüntüle"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            visibility
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => addToCart(product)}
+                          className="text-text-light-secondary hover:text-primary transition-colors p-1.5 rounded hover:bg-primary/10 flex items-center gap-1"
+                          title="Sepete Ekle"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            add_shopping_cart
+                          </span>
+                        </button>
+                      </div>
+                    ) : editingId === product.id ? (
                       <div className="flex gap-2 justify-end">
                         <button
                           onClick={handleSaveEdit}

@@ -8,15 +8,35 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// Enums
+enum Role {
+  ADMIN
+  DISTRIBUTOR
+}
+
+enum ProductStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  SHIPPED
+  DELIVERED
+  CANCELED
+}
+
 model User {
   id             String    @id @default(uuid())
   name           String?
   email          String    @unique
-  hashedPassword String
+  hashedPassword String?   // Distribütör davet edildiğinde null olabilir
   emailVerified  DateTime?
   image          String?
   phone          String?
-  role           String    @default("User")
+  role           Role      @default(DISTRIBUTOR)
   avatar         String?
   
   // Notification settings
@@ -27,6 +47,7 @@ model User {
   accounts       Account[]
   sessions       Session[]
   resetTokens    PasswordResetToken[]
+  orders         Order[]   // Distribütörün siparişleri
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
@@ -114,15 +135,16 @@ model Product {
 model Order {
   id         String      @id @default(cuid())
   orderNo    String      @unique
-  customerId String
-  customer   Customer    @relation(fields: [customerId], references: [id])
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
   amount     Float
   status     OrderStatus @default(PENDING)
+  invoiceUrl String?     // Fatura dosyası URL'i
   items      OrderItem[]
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
-  @@index([customerId])
+  @@index([userId])
 }
 
 model OrderItem {
@@ -138,16 +160,6 @@ model OrderItem {
   @@index([productId])
 }
 
-model Customer {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  phone     String?
-  orders    Order[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 model SalesRecord {
   id        String   @id @default(cuid())
   date      DateTime
@@ -157,18 +169,6 @@ model SalesRecord {
   @@index([date])
 }
 
-enum ProductStatus {
-  IN_STOCK
-  LOW_STOCK
-  OUT_OF_STOCK
-}
-
-enum OrderStatus {
-  PENDING
-  COMPLETED
-  CANCELED
-}
-
 model EmailVerification {
   id        Int      @id @default(autoincrement())
   email     String   @unique
@@ -176,4 +176,18 @@ model EmailVerification {
   expiresAt DateTime
   verified  Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   // "order", "stock", "invoice", "system"
+  read      Boolean  @default(false)
+  link      String?  // İlgili sayfaya yönlendirme
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
 }

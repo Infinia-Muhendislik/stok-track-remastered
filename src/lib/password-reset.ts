@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import prisma from "@/lib/prisma";
 
 const HOUR_IN_MS = 60 * 60 * 1000;
+const DAY_IN_MS = 24 * HOUR_IN_MS;
 
 function getResetSecret() {
   const secret =
@@ -18,16 +19,25 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function issuePasswordResetToken(userId: string, email: string) {
+export async function issuePasswordResetToken(
+  userId: string,
+  email: string,
+  expiresInDays: number = 0 // 0 means 1 hour (default), > 0 means that many days
+) {
   const secret = getResetSecret();
   const jwtId = randomUUID();
+  const expiresInSeconds =
+    expiresInDays > 0 ? expiresInDays * 24 * 60 * 60 : 60 * 60; // seconds
+
   const token = jwt.sign({ sub: userId, email }, secret, {
-    expiresIn: "1h",
+    expiresIn: expiresInSeconds,
     jwtid: jwtId,
   });
 
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + HOUR_IN_MS);
+  const expiresAt = new Date(
+    Date.now() + (expiresInDays > 0 ? expiresInDays * DAY_IN_MS : HOUR_IN_MS)
+  );
 
   await prisma.passwordResetToken.deleteMany({ where: { userId } });
   await prisma.passwordResetToken.create({

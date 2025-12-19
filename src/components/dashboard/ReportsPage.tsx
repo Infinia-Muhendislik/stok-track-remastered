@@ -25,17 +25,18 @@ const CATEGORY_COLORS = ["#137fec", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 export function ReportsPage({ orders, products }: ReportsPageProps) {
   // Gerçek verilerden istatistikler hesapla
   const stats = useMemo(() => {
-    const completedOrders = orders.filter((o) => o.status === "Completed");
-    const totalRevenue = completedOrders.reduce((sum, o) => sum + o.amount, 0);
+    const deliveredOrders = orders.filter((o) => o.status === "Delivered");
+    const totalRevenue = deliveredOrders.reduce((sum, o) => sum + o.amount, 0);
     const avgOrderValue =
-      completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
+      deliveredOrders.length > 0 ? totalRevenue / deliveredOrders.length : 0;
     const conversionRate =
-      orders.length > 0 ? (completedOrders.length / orders.length) * 100 : 0;
+      orders.length > 0 ? (deliveredOrders.length / orders.length) * 100 : 0;
 
     return {
       totalRevenue,
       avgOrderValue,
       conversionRate,
+      deliveredCount: deliveredOrders.length,
     };
   }, [orders]);
 
@@ -55,7 +56,7 @@ export function ReportsPage({ orders, products }: ReportsPageProps) {
   const revenueData = useMemo(() => {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
     const totalRevenue = orders
-      .filter((o) => o.status === "Completed")
+      .filter((o) => o.status === "Delivered")
       .reduce((sum, o) => sum + o.amount, 0);
 
     // Basit dağılım simülasyonu
@@ -72,9 +73,7 @@ export function ReportsPage({ orders, products }: ReportsPageProps) {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`,
-      delta: `${
-        orders.filter((o) => o.status === "Completed").length
-      } completed orders`,
+      delta: `${stats.deliveredCount} delivered orders`,
       positive: true,
     },
     {
@@ -86,7 +85,7 @@ export function ReportsPage({ orders, products }: ReportsPageProps) {
     {
       label: "Conversion Rate",
       value: `${stats.conversionRate.toFixed(1)}%`,
-      delta: `Completed vs total orders`,
+      delta: `Delivered vs total orders`,
       positive: stats.conversionRate > 50,
     },
   ];

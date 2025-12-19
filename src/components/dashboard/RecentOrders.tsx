@@ -5,8 +5,10 @@ interface RecentOrdersProps {
 }
 
 const STATUS_COLOR: Record<Order["status"], string> = {
-  Completed: "text-green-600 dark:text-green-400",
   Pending: "text-orange-500 dark:text-orange-400",
+  Approved: "text-blue-600 dark:text-blue-400",
+  Shipped: "text-purple-600 dark:text-purple-400",
+  Delivered: "text-green-600 dark:text-green-400",
   Canceled: "text-red-600 dark:text-red-400",
 };
 
